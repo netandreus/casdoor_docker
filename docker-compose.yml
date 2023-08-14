@@ -1,0 +1,76 @@
+version: '3.1'
+services:
+  ########
+  #  DB  #
+  ########
+  db:
+    container_name: sso_mysql
+    image: sso_mysql
+    restart: always
+    build:
+      context: ./build/mysql
+      dockerfile: Dockerfile
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - ./volumes/mysql:/var/lib/mysql
+    healthcheck:
+      test: [ "CMD", "mysqladmin" ,"ping", "-h", "localhost" ]
+      timeout: 20s
+      retries: 10
+
+  ################
+  #  phpMyAdmin  #
+  ################
+  phpmyadmin:
+    container_name: sso_phpmyadmin
+    image: sso_phpmyadmin
+    build:
+      context: ./build/phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "8082:80"
+    environment:
+      PMA_ARBITRARY: 1
+      PMA_HOST: db
+      PMA_USER: root
+      PMA_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    stdin_open: true
+    tty: true
+    depends_on:
+      - db
+    healthcheck:
+      test: [ "CMD", "/usr/local/bin/docker-phpmyadmin-healthcheck" ]
+      timeout: 10s
+      retries: 10
+
+  #############
+  #  Casdoor  #
+  #############
+  casdoor:
+    container_name: sso_casdoor
+    image: sso_casdoor
+    restart: always
+    build:
+      context: ./build/casdoor
+      dockerfile: Dockerfile
+    entrypoint: /bin/sh -c './server --createDatabase=true'
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    environment:
+      RUNNING_IN_DOCKER: "true"
+      driverName: "mysql"
+      dataSourceName: "root:123456@tcp(db:3306)/"
+      dbName: "casdoor"
+      runmode: "dev"
+      showSql: "true"
+    volumes:
+      - ./volumes/conf:/conf/
+    healthcheck:
+      test: [ "CMD", "/usr/local/bin/docker-casdoor-healthcheck" ]
+      timeout: 10s
+      retries: 10
